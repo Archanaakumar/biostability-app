@@ -7,3 +7,9 @@ build/
 dist/
 *.log
 .env
+
+# Windows system files - prevent AppData from being tracked
+AppData/
+*.ldb
+*.log
+Packages/
