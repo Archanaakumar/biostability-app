@@ -98,7 +98,7 @@ export default function StabilityScoreDetails() {
           <View style={styles.logTextContainer}>
             <Text style={styles.logTitle}>Resting HR Incongruity</Text>
             <Text style={styles.logDesc}>A +9 bpm deviation in sleeping heart rate registered. Elevating cardiovascular tone indicates early cytokine pathway stimulation.</Text>
-            <Text style={styles.logTime}>1 day ago • Health Connect API</Text>
+            <Text style={styles.logTime}>1 day ago • Google Fit API</Text>
           </View>
         </View>
       </View>

@@ -160,10 +160,10 @@ export default function DeviceHub() {
         await Linking.openURL('x-apple-health://');
       } catch (_) {}
     } else {
-      const playStoreLink = 'market://details?id=com.google.android.apps.healthdata';
-      const webFallback = 'https://play.google.com/store/apps/details?id=com.google.android.apps.healthdata';
+      const playStoreLink = 'market://details?id=com.google.android.apps.fitness';
+      const webFallback = 'https://play.google.com/store/apps/details?id=com.google.android.apps.fitness';
       try {
-        await Linking.openURL('healthconnect://');
+        await Linking.openURL('vnd.google.fitness.tracking://');
       } catch (_) {
         try {
           await Linking.openURL(playStoreLink);
@@ -449,7 +449,7 @@ export default function DeviceHub() {
                     </View>
                     <View style={styles.timelineRight}>
                       <Text style={styles.timelineStepTitle}>Step 2: Share with Phone Health</Text>
-                      <Text style={styles.timelineStepDesc}>In settings of your wearable app, turn on <Text style={{ color: theme.colors.warning, fontWeight: '700' }}>Sync with {Platform.OS === 'ios' ? 'Apple Health' : 'Health Connect'}</Text>. <Text style={{ color: theme.colors.warning, fontWeight: '600', textDecorationLine: 'underline' }}>Tap to configure →</Text></Text>
+                      <Text style={styles.timelineStepDesc}>In settings of your wearable app, turn on <Text style={{ color: theme.colors.warning, fontWeight: '700' }}>Sync with {Platform.OS === 'ios' ? 'Apple Health' : 'Google Fit'}</Text>. <Text style={{ color: theme.colors.warning, fontWeight: '600', textDecorationLine: 'underline' }}>Tap to configure →</Text></Text>
                     </View>
                   </TouchableOpacity>
 
@@ -616,7 +616,7 @@ export default function DeviceHub() {
             <View style={styles.androidDialog}>
               <View style={styles.androidHeader}>
                 <MaterialCommunityIcons name="google-fit" size={24} color="#4285F4" />
-                <Text style={styles.androidHeaderTitle}>Health Connect</Text>
+                <Text style={styles.androidHeaderTitle}>Google Fit</Text>
               </View>
 
               <Text style={styles.androidTitle}>Allow BioStability access?</Text>

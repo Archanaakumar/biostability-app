@@ -91,10 +91,10 @@ export default function WatchConnection({ setTab }) {
         await Linking.openURL('x-apple-health://');
       } catch (_) {}
     } else {
-      const playStoreLink = 'market://details?id=com.google.android.apps.healthdata';
-      const webFallback = 'https://play.google.com/store/apps/details?id=com.google.android.apps.healthdata';
+      const playStoreLink = 'market://details?id=com.google.android.apps.fitness';
+      const webFallback = 'https://play.google.com/store/apps/details?id=com.google.android.apps.fitness';
       try {
-        await Linking.openURL('healthconnect://');
+        await Linking.openURL('vnd.google.fitness.tracking://');
       } catch (_) {
         try {
           await Linking.openURL(playStoreLink);
@@ -244,12 +244,12 @@ export default function WatchConnection({ setTab }) {
           <View style={styles.deviceText}>
             <Text style={styles.deviceName}>{device}</Text>
             <Text style={styles.deviceSub}>
-              {Platform.OS === 'ios' ? 'Connected via Apple HealthKit' : 'Connected via Google Health Connect'}
+              {Platform.OS === 'ios' ? 'Connected via Apple HealthKit' : 'Connected via Google Fit'}
             </Text>
             <Text style={styles.lastSyncText}>
               {isConnected 
                 ? `Battery: ${watchBattery} • Steps: ${watchSteps} steps • Synced: ${lastSyncTime}` 
-                : 'Status: Inactive • Tap below to link Apple Health / Google Health Connect'}
+                : 'Status: Inactive • Tap below to link Apple Health / Google Fit'}
             </Text>
           </View>
         </View>
@@ -275,7 +275,7 @@ export default function WatchConnection({ setTab }) {
                   style={styles.btnIcon} 
                 />
                 <Text style={styles.btnText}>
-                  {Platform.OS === 'ios' ? 'Link Apple Health' : 'Link Health Connect'}
+                  {Platform.OS === 'ios' ? 'Link Apple Health' : 'Link Google Fit'}
                 </Text>
               </TouchableOpacity>
             ) : (
@@ -334,7 +334,7 @@ export default function WatchConnection({ setTab }) {
               {Platform.OS === 'ios' ? 'Enable Apple Health Toggle' : 'Enable Google Fit Toggle'}
             </Text>
             <Text style={styles.stepSub}>
-              Inside Noise Fit app settings, tap **Sync Settings** and toggle **"Sync with {Platform.OS === 'ios' ? 'Apple Health' : 'Health Connect'}"** to ON. <Text style={{ color: theme.colors.warning, fontWeight: '600', textDecorationLine: 'underline' }}>Tap to configure sync →</Text>
+              Inside Noise Fit app settings, tap **Sync Settings** and toggle **"Sync with {Platform.OS === 'ios' ? 'Apple Health' : 'Google Fit'}"** to ON. <Text style={{ color: theme.colors.warning, fontWeight: '600', textDecorationLine: 'underline' }}>Tap to configure sync →</Text>
             </Text>
           </View>
         </TouchableOpacity>
@@ -468,7 +468,7 @@ export default function WatchConnection({ setTab }) {
             <View style={styles.androidDialog}>
               <View style={styles.androidHeader}>
                 <MaterialCommunityIcons name="google-fit" size={24} color="#4285F4" />
-                <Text style={styles.androidHeaderTitle}>Health Connect</Text>
+                <Text style={styles.androidHeaderTitle}>Google Fit</Text>
               </View>
 
               <Text style={styles.androidTitle}>Allow BioStability access?</Text>

@@ -93,7 +93,7 @@ export default function Dashboard({ setTab }) {
   const statusLabel = isLinked ? (scoreData?.status ?? 'Off-Wrist Calibration') : 'No Device Linked';
   const insight = isLinked 
     ? "Autonomic balance is undergoing off-wrist calibration. PPG sensors are inactive; fasten watch securely to your wrist to calibrate stability indices."
-    : `No biometric stream active. Tap the Link button below to sync steps and heart rate datasets from ${Platform.OS === 'ios' ? 'Apple Health' : 'Google Health Connect'} completely for free.`;
+    : `No biometric stream active. Tap the Link button below to sync steps and heart rate datasets from ${Platform.OS === 'ios' ? 'Apple Health' : 'Google Fit'} completely for free.`;
   
   const raw = scoreData?.current_raw;
   const baseline = scoreData?.baseline;
@@ -273,7 +273,7 @@ export default function Dashboard({ setTab }) {
               />
               <View style={{ flex: 1, marginLeft: 12 }}>
                 <Text style={styles.unlinkedTitle}>
-                  {Platform.OS === 'ios' ? 'Link Apple Health' : 'Link Health Connect'}
+                  {Platform.OS === 'ios' ? 'Link Apple Health' : 'Link Google Fit'}
                 </Text>
                 <Text style={styles.unlinkedSub}>Sync {user?.name || 'Archanaa'}'s Noise watch steps &amp; battery for free</Text>
               </View>
@@ -294,7 +294,7 @@ export default function Dashboard({ setTab }) {
                 {scoreData?.watch_name || 'Pulse Go Buzz'} ({user?.name || 'Archanaa'}'s Watch)
               </Text>
               <Text style={styles.deviceBannerSub}>
-                Synced via {Platform.OS === 'ios' ? 'Apple Health' : 'Google Health Connect'} · Battery: {scoreData?.battery || '26%'} 🟢
+                Synced via {Platform.OS === 'ios' ? 'Apple Health' : 'Google Fit'} · Battery: {scoreData?.battery || '26%'} 🟢
               </Text>
             </View>
           </View>
@@ -417,7 +417,7 @@ export default function Dashboard({ setTab }) {
             <View style={styles.androidDialog}>
               <View style={styles.androidHeader}>
                 <MaterialCommunityIcons name="google-fit" size={24} color="#4285F4" />
-                <Text style={styles.androidHeaderTitle}>Health Connect</Text>
+                <Text style={styles.androidHeaderTitle}>Google Fit</Text>
               </View>
 
               <Text style={styles.androidTitle}>Allow BioStability access?</Text>
