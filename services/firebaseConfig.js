@@ -32,25 +32,24 @@ export const TERRA_CONFIG = {
   webhookDestination: 'https://api.biostability.ai/v1/terra-webhook',
 };
 
-import Constants from 'expo-constants';
+/**
+ * Backend URL Configuration
+ *
+ * EXPO GO / DEVELOPMENT: BACKEND_URL is null → app runs 100% offline.
+ * All watch data comes from AsyncStorage + the health bridge simulator.
+ * No localhost connections are attempted — zero ERR_CONNECTION_REFUSED errors.
+ *
+ * PRODUCTION DEPLOYMENT: Replace null with your live server URL:
+ *   export const BACKEND_URL = 'https://api.yourdomain.com/api/v1';
+ */
+export const BACKEND_URL = null;
 
-const getBackendUrl = () => {
-  let localIp = 'localhost';
-  try {
-    if (Constants.expoConfig?.hostUri) {
-      localIp = Constants.expoConfig.hostUri.split(':').shift();
-    }
-  } catch (e) {}
-  return {
-    api: `http://${localIp}:8000/api/v1`,
-    ws: `ws://${localIp}:8000/ws`
-  };
-};
+// API_BASE_URL — null means all API calls instantly fall back to local mock data
+export const API_BASE_URL = BACKEND_URL;
+export const WS_BASE_URL = BACKEND_URL
+  ? BACKEND_URL.replace('http', 'ws').replace('/api/v1', '/ws')
+  : null;
 
-const urls = getBackendUrl();
-export const API_BASE_URL = urls.api;
-export const WS_BASE_URL = urls.ws;
-
-// Flags — auto-detected from placeholder values
+// Feature flags — auto-detected from placeholder values
 export const IS_FIREBASE_CONFIGURED = !FIREBASE_CONFIG.apiKey.startsWith('TODO_');
 export const IS_TERRA_CONFIGURED = !TERRA_CONFIG.devId.startsWith('TODO_');

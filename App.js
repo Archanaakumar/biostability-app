@@ -1,3 +1,4 @@
+import 'react-native-url-polyfill/auto';
 import React, { useState } from 'react';
 import {
   View, StyleSheet,
@@ -20,6 +21,7 @@ import Profile from './screens/Profile';
 import DeviceHub from './screens/DeviceHub';
 import LoginScreen from './screens/LoginScreen';
 import SignupScreen from './screens/SignupScreen';
+import ProfileSetupScreen from './screens/ProfileSetupScreen';
 
 // ── Navigation tabs (6 tabs) ──────────────────────────────────────────────────
 const NAV_ITEMS = [
@@ -121,7 +123,12 @@ function AuthGate() {
       : <LoginScreen onNavigateToSignup={() => setAuthScreen('signup')} />;
   }
 
-  // Authenticated → show main app
+  // Authenticated but profile setup not completed → show Profile Setup Screen
+  if (!user.hasSetupCompleted) {
+    return <ProfileSetupScreen onComplete={() => {}} />;
+  }
+
+  // Authenticated and profile completed → show main app
   return <AppNavigator />;
 }
 

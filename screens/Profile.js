@@ -1,12 +1,14 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
 import { theme } from '../styles/theme';
 import WatchConnection from '../components/WatchConnection';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useAuth } from '../context/AuthContext';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { supabase } from '../services/supabaseConfig';
 
 export default function Profile({ setTab }) {
-  const { logout } = useAuth();
+  const { logout, user } = useAuth();
   const [sensitivity, setSensitivity] = useState('Balanced');
   const [baselinePeriod, setBaselinePeriod] = useState('30 Days');
   const [notiToggles, setNotiToggles] = useState({
@@ -15,10 +17,92 @@ export default function Profile({ setTab }) {
     cardiac: false,
     baseline: true
   });
+  const [watchData, setWatchData] = useState(null);
+  const [supabaseRecords, setSupabaseRecords] = useState([]);
+
+  // Poll local watch data every 3s
+  useEffect(() => {
+    const fetchWatchData = async () => {
+      try {
+        const raw = await AsyncStorage.getItem('@biostability:user_watch_data');
+        if (raw) setWatchData(JSON.parse(raw));
+      } catch (err) {
+        console.log('Error fetching watch data in Profile:', err);
+      }
+    };
+    fetchWatchData();
+    const interval = setInterval(fetchWatchData, 3000);
+    return () => clearInterval(interval);
+  }, []);
+
+  // Fetch real daily_metrics history from Supabase
+  useEffect(() => {
+    const fetchHistory = async () => {
+      if (!user?.uid) return;
+      try {
+        const { data, error } = await supabase
+          .from('daily_metrics')
+          .select('*')
+          .eq('user_id', user.uid)
+          .order('recorded_at', { ascending: false })
+          .limit(7);
+        if (!error && data && data.length > 0) {
+          setSupabaseRecords(data);
+        }
+      } catch (_) {}
+    };
+    fetchHistory();
+    const interval = setInterval(fetchHistory, 10000); // refresh every 10s
+    return () => clearInterval(interval);
+  }, [user?.uid]);
 
   const toggleNoti = (key) => {
     setNotiToggles(prev => ({ ...prev, [key]: !prev[key] }));
   };
+
+  const getLedgerRecords = () => {
+    const todaySteps  = watchData ? String(watchData.current_raw?.steps_count ?? '4850') : null;
+    const todaySleep  = watchData ? String(watchData.current_raw?.sleep_hrs   ?? '7.2')  : null;
+    const todayHRV    = watchData ? String(watchData.current_raw?.hrv_ms      ?? '72')   : null;
+    const todayStatus = watchData ? watchData.status : 'Pending Sync';
+
+    const todayRow = {
+      day: 'Today',
+      isToday: true,
+      steps:  todaySteps ? `${todaySteps} steps` : '-- steps',
+      sleep:  todaySleep ? `${todaySleep} hrs`   : '-- hrs',
+      hrv:    todayHRV   ? `${todayHRV} ms`      : '-- ms',
+      status: todayStatus,
+      synced: !!watchData,
+    };
+
+    // If real Supabase records exist, use them for historical rows
+    if (supabaseRecords.length > 1) {
+      const historyRows = supabaseRecords.slice(1, 4).map((rec, i) => {
+        const d    = new Date(rec.recorded_at);
+        const label = i === 0 ? 'Yesterday' : i === 1 ? '2 Days Ago' : '3 Days Ago';
+        return {
+          day:    label,
+          steps:  `${Number(rec.steps_count).toLocaleString()} steps`,
+          sleep:  `${Number(rec.sleep_hrs).toFixed(1)} hrs`,
+          hrv:    `${rec.hrv_ms} ms`,
+          status: rec.status || 'Optimal',
+          synced: true,
+        };
+      });
+      return [todayRow, ...historyRows];
+    }
+
+    // Fallback to static placeholder rows until real data accumulates
+    return [
+      todayRow,
+      { day: 'Yesterday', steps: '8,420 steps', sleep: '7.5 hrs', hrv: '73 ms', status: 'Optimal', synced: true },
+      { day: '2 Days Ago', steps: '5,120 steps', sleep: '6.1 hrs', hrv: '62 ms', status: 'Warning',  synced: true },
+      { day: '3 Days Ago', steps: '9,120 steps', sleep: '8.1 hrs', hrv: '76 ms', status: 'Optimal',  synced: true },
+    ];
+  };
+
+  const records = getLedgerRecords();
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer} showsVerticalScrollIndicator={false}>
@@ -34,12 +118,17 @@ export default function Profile({ setTab }) {
           <MaterialCommunityIcons name="account" size={32} color={theme.colors.accentCyan} />
         </View>
         <View style={styles.userTextContainer}>
-          <Text style={styles.userName}>Dr. Archanaa</Text>
+          <Text style={styles.userName}>{user?.name || 'Archanaa'}</Text>
           <Text style={styles.userEmail}>Physiological Baseline Profile</Text>
           <View style={styles.badgeRow}>
             <View style={styles.profileBadge}>
-              <Text style={styles.profileBadgeText}>Age 32</Text>
+              <Text style={styles.profileBadgeText}>Age {user?.age || '32'}</Text>
             </View>
+            {user?.gender && (
+              <View style={styles.profileBadge}>
+                <Text style={styles.profileBadgeText}>{user.gender}</Text>
+              </View>
+            )}
             <View style={styles.profileBadge}>
               <Text style={styles.profileBadgeText}>Calibrated</Text>
             </View>
@@ -50,36 +139,86 @@ export default function Profile({ setTab }) {
       {/* Terra API Secure Handshake Panel (WatchConnection) */}
       <WatchConnection setTab={setTab} />
 
-      {/* Developer Webhook shortcut console */}
-      <Text style={styles.sectionTitle}>Terra Developer Console</Text>
-      <View style={styles.developerCard}>
-        <View style={styles.devHeader}>
-          <MaterialCommunityIcons name="code-tags" size={18} color={theme.colors.accentCyan} />
-          <Text style={styles.devTitle}>TryTerra Developer Sync</Text>
+      {/* Daily Activity Ledger */}
+      <Text style={styles.sectionTitle}>Daily Activity Ledger</Text>
+      <View style={styles.ledgerCard}>
+        <View style={styles.ledgerHeaderRow}>
+          <View style={styles.ledgerHeaderLeft}>
+            <MaterialCommunityIcons name="calendar-multiselect" size={18} color={theme.colors.accentCyan} />
+            <Text style={styles.ledgerCardTitle}>Calibrated Activity Records</Text>
+          </View>
+          <Text style={styles.ledgerBadge}>4-Day Log</Text>
         </View>
-        
-        <View style={styles.devRow}>
-          <Text style={styles.devKey}>Developer ID</Text>
-          <Text style={styles.devVal}>biostability-prod-9a2f</Text>
-        </View>
-        <View style={styles.devDivider} />
 
-        <View style={styles.devRow}>
-          <Text style={styles.devKey}>Widget URL</Text>
-          <Text style={styles.devVal} numberOfLines={1}>https://widget.tryterra.co/auth...</Text>
-        </View>
-        <View style={styles.devDivider} />
+        {records.map((rec, index) => {
+          const isOptimal = rec.status === 'Optimal';
+          const isWarning = rec.status === 'Warning' || rec.status === 'Drifting';
+          const isPending = rec.status === 'Pending Sync' || rec.status === 'Calibrating';
 
-        <View style={styles.devRow}>
-          <Text style={styles.devKey}>Webhook Destination</Text>
-          <Text style={styles.devVal} numberOfLines={1}>https://api.biostability.ai/v1/webhook</Text>
-        </View>
-        <View style={styles.devDivider} />
+          return (
+            <View key={index} style={[styles.ledgerItem, rec.isToday && styles.ledgerItemToday]}>
+              <View style={styles.itemHeader}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                  <Text style={[styles.itemDay, rec.isToday && styles.itemDayToday]}>
+                    {rec.day}
+                  </Text>
+                  {rec.isToday && (
+                    <View style={styles.liveIndicator}>
+                      <View style={styles.liveDot} />
+                      <Text style={styles.liveText}>LIVE SYNC</Text>
+                    </View>
+                  )}
+                </View>
+                <View style={[
+                  styles.statusPill,
+                  isOptimal && styles.statusPillOptimal,
+                  isWarning && styles.statusPillWarning,
+                  isPending && styles.statusPillPending
+                ]}>
+                  <MaterialCommunityIcons 
+                    name={isOptimal ? "check-circle" : isWarning ? "alert-circle" : "sync"} 
+                    size={10} 
+                    color={isOptimal ? theme.colors.success : isWarning ? theme.colors.warning : theme.colors.textSecondary} 
+                  />
+                  <Text style={[
+                    styles.statusText,
+                    isOptimal && styles.statusTextOptimal,
+                    isWarning && styles.statusTextWarning,
+                    isPending && styles.statusTextPending
+                  ]}>
+                    {rec.status}
+                  </Text>
+                </View>
+              </View>
 
-        <View style={styles.devFooter}>
-          <MaterialCommunityIcons name="shield-lock" size={12} color={theme.colors.success} />
-          <Text style={styles.devFooterText}>Data is AES-256 encrypted, HIPAA & GDPR compliant.</Text>
-        </View>
+              <View style={styles.metricsGrid}>
+                {/* Steps Column */}
+                <View style={styles.metricCol}>
+                  <MaterialCommunityIcons name="walk" size={14} color={theme.colors.accentCyan} />
+                  <Text style={[styles.metricVal, rec.isToday && styles.metricValToday]}>
+                    {rec.steps}
+                  </Text>
+                </View>
+
+                {/* Sleep Column */}
+                <View style={styles.metricCol}>
+                  <MaterialCommunityIcons name="weather-night" size={14} color={theme.colors.accentIndigo} />
+                  <Text style={[styles.metricVal, rec.isToday && styles.metricValToday]}>
+                    {rec.sleep}
+                  </Text>
+                </View>
+
+                {/* HRV Column */}
+                <View style={styles.metricCol}>
+                  <MaterialCommunityIcons name="heart-flash" size={14} color={theme.colors.danger} />
+                  <Text style={[styles.metricVal, rec.isToday && styles.metricValToday]}>
+                    {rec.hrv}
+                  </Text>
+                </View>
+              </View>
+            </View>
+          );
+        })}
       </View>
 
       {/* AI Baseline Calibrations */}
@@ -455,5 +594,143 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '800',
     letterSpacing: 0.3,
+  },
+  ledgerCard: {
+    backgroundColor: 'rgba(18, 27, 46, 0.4)',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.04)',
+    padding: 16,
+    marginBottom: 16,
+  },
+  ledgerHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255, 255, 255, 0.06)',
+    paddingBottom: 8,
+  },
+  ledgerHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  ledgerCardTitle: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: theme.colors.textPrimary,
+  },
+  ledgerBadge: {
+    fontSize: 9,
+    color: theme.colors.accentCyan,
+    fontWeight: '850',
+    backgroundColor: 'rgba(6, 182, 212, 0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(6, 182, 212, 0.2)',
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+    borderRadius: 6,
+  },
+  ledgerItem: {
+    backgroundColor: 'rgba(255, 255, 255, 0.02)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.03)',
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 10,
+  },
+  ledgerItemToday: {
+    backgroundColor: 'rgba(6, 182, 212, 0.03)',
+    borderColor: 'rgba(6, 182, 212, 0.15)',
+  },
+  itemHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  itemDay: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: theme.colors.textPrimary,
+  },
+  itemDayToday: {
+    color: theme.colors.accentCyan,
+    fontWeight: '850',
+  },
+  statusPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+    borderWidth: 1,
+  },
+  statusPillOptimal: {
+    backgroundColor: 'rgba(16, 185, 129, 0.08)',
+    borderColor: 'rgba(16, 185, 129, 0.2)',
+  },
+  statusPillWarning: {
+    backgroundColor: 'rgba(245, 158, 11, 0.08)',
+    borderColor: 'rgba(245, 158, 11, 0.2)',
+  },
+  statusPillPending: {
+    backgroundColor: 'rgba(148, 163, 184, 0.08)',
+    borderColor: 'rgba(148, 163, 184, 0.2)',
+  },
+  statusText: {
+    fontSize: 9,
+    fontWeight: '700',
+  },
+  statusTextOptimal: {
+    color: theme.colors.success,
+  },
+  statusTextWarning: {
+    color: theme.colors.warning,
+  },
+  statusTextPending: {
+    color: theme.colors.textSecondary,
+  },
+  metricsGrid: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  metricCol: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  metricVal: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: theme.colors.textSecondary,
+  },
+  metricValToday: {
+    color: theme.colors.textPrimary,
+    fontWeight: '700',
+  },
+  liveIndicator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(6, 182, 212, 0.1)',
+    borderRadius: 4,
+    paddingHorizontal: 4,
+    paddingVertical: 1,
+    gap: 3,
+  },
+  liveDot: {
+    width: 4,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: theme.colors.accentCyan,
+  },
+  liveText: {
+    fontSize: 7,
+    fontWeight: '900',
+    color: theme.colors.accentCyan,
   }
 });

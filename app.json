@@ -5,18 +5,21 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "userInterfaceStyle": "dark",
-    "newArchEnabled": true,
+    "newArchEnabled": false,
     "ios": {
       "supportsTablet": true
     },
     "android": {
       "backgroundColor": "#0B0F19",
-      "package": "com.anonymous.biostabilityapp"
+      "package": "com.archanaa.biostability"
     },
     "extra": {
       "eas": {
         "projectId": "a4e806c6-89aa-4ee7-8c9b-525d1b377aa8"
       }
-    }
+    },
+    "plugins": [
+      "expo-font"
+    ]
   }
 }

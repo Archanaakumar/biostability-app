@@ -27,6 +27,11 @@ class TerraWebSocketService {
    * @param {function} onStatus - Called with status string: 'connected'|'disconnected'|'error'|'unavailable'
    */
   connect(userId, onData, onStatus) {
+    // Skip WebSocket entirely when no backend is configured (Expo Go mode)
+    if (!WS_BASE_URL) {
+      onStatus?.('unavailable');
+      return;
+    }
     this._userId = userId;
     this._onData = onData;
     this._onStatus = onStatus;

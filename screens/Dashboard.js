@@ -29,31 +29,35 @@ export default function Dashboard({ setTab }) {
     steps: true,
   });
 
-  // ── Lightweight polling for watch link state ──────────────────────────────
+  // ── Poll AsyncStorage every 3s — reads watch data AND link state ────────────
   useEffect(() => {
-    const checkLink = () => {
-      AsyncStorage.getItem('@biostability:user_watch_data').then(raw => {
-        setIsLinked(!!raw);
-      }).catch(() => {});
+    const refreshFromStorage = async () => {
+      try {
+        const raw = await AsyncStorage.getItem('@biostability:user_watch_data');
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          setIsLinked(true);
+          setScoreData(parsed); // ← directly use stored watch data
+        } else {
+          setIsLinked(false);
+          setScoreData(null);
+        }
+      } catch (_) {}
     };
-    checkLink();
-    const interval = setInterval(checkLink, 1000);
+    refreshFromStorage();
+    const interval = setInterval(refreshFromStorage, 3000);
     return () => clearInterval(interval);
   }, []);
 
-  // ── Fetch stability score on mount & refresh ────────────────────────────────
+  // ── Pulse animation (runs once on mount) ─────────────────────────────────────
   useEffect(() => {
-    const userId = user?.uid || 'demo_user';
-    apiService.getStabilityScore(userId).then(setScoreData);
-
-    // Pulse animation for live indicators
     Animated.loop(
       Animated.sequence([
         Animated.timing(pulseAnim, { toValue: 1.4, duration: 800, useNativeDriver: true }),
         Animated.timing(pulseAnim, { toValue: 1, duration: 800, useNativeDriver: true }),
       ])
     ).start();
-  }, [user?.uid, isLinked]);
+  }, []);
 
   const handleTurnAllOn = () => {
     setPermSwitches({ hrv: true, sleep: true, rhr: true, steps: true });
@@ -70,22 +74,14 @@ export default function Dashboard({ setTab }) {
     const userId = user?.uid || 'uid_archanaa_123';
     setTimeout(async () => {
       try {
+        // Sync watch data — stores in AsyncStorage, picked up by 3s poll automatically
         const watchData = await healthBridge.grantPermission(userId);
         setSyncSuccess(true);
         setIsSyncing(false);
         setIsLinked(true);
-        
-        // Refresh values from backend, falling back to local watch data on connection failure
-        try {
-          const res = await apiService.getStabilityScore(userId);
-          setScoreData(res);
-        } catch (err) {
-          setScoreData(watchData);
-        }
+        setScoreData(watchData); // ← immediately reflect synced values
 
-        setTimeout(() => {
-          setSyncSuccess(false);
-        }, 2000);
+        setTimeout(() => setSyncSuccess(false), 2500);
       } catch (e) {
         setIsSyncing(false);
       }
@@ -160,6 +156,53 @@ export default function Dashboard({ setTab }) {
         </TouchableOpacity>
       </View>
 
+      {/* Premium Profile Card (First Page Profile Visibility) */}
+      <TouchableOpacity 
+        style={styles.dashboardProfileCard} 
+        onPress={() => setTab('profile')}
+        activeOpacity={0.9}
+      >
+        <LinearGradient
+          colors={['rgba(6, 182, 212, 0.08)', 'rgba(79, 70, 229, 0.03)']}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={styles.profileCardGrad}
+        >
+          <View style={styles.profileAvatarBg}>
+            <MaterialCommunityIcons name="account" size={26} color={theme.colors.accentCyan} />
+            <View style={[styles.profileAvatarDot, { backgroundColor: isLinked ? theme.colors.success : theme.colors.warning }]} />
+          </View>
+          <View style={styles.profileTextWrapper}>
+            <View style={styles.profileNameRow}>
+              <Text style={styles.dashboardProfileName}>{user?.name || 'Archanaa'}</Text>
+              <View style={[styles.profileStatusBadge, { borderColor: isLinked ? 'rgba(16, 185, 129, 0.2)' : 'rgba(245, 158, 11, 0.2)' }]}>
+                <Text style={[styles.profileStatusText, { color: isLinked ? theme.colors.success : theme.colors.warning }]}>
+                  {isLinked ? 'Calibrated' : 'Offline'}
+                </Text>
+              </View>
+            </View>
+            <Text style={styles.dashboardProfileEmail}>Physiological Baseline Profile</Text>
+            <View style={styles.dashboardBadgeRow}>
+              <View style={styles.dashboardProfileBadge}>
+                <Text style={styles.dashboardProfileBadgeText}>Age {user?.age || '32'}</Text>
+              </View>
+              {user?.gender && (
+                <View style={styles.dashboardProfileBadge}>
+                  <Text style={styles.dashboardProfileBadgeText}>{user.gender}</Text>
+                </View>
+              )}
+              <View style={styles.dashboardProfileBadge}>
+                <Text style={styles.dashboardProfileBadgeText}>Calibrated</Text>
+              </View>
+              <View style={styles.dashboardProfileBadge}>
+                <Text style={styles.dashboardProfileBadgeText}>ID: {user?.uid ? user.uid.replace('uid_', '').toUpperCase() : 'ARCHANAA'}</Text>
+              </View>
+            </View>
+          </View>
+          <MaterialCommunityIcons name="chevron-right" size={20} color={theme.colors.textMuted} />
+        </LinearGradient>
+      </TouchableOpacity>
+
       {/* Hero Arc Gauge Panel */}
       <View style={styles.heroCard}>
         <View style={styles.heroGlassGlow} />
@@ -232,7 +275,7 @@ export default function Dashboard({ setTab }) {
                 <Text style={styles.unlinkedTitle}>
                   {Platform.OS === 'ios' ? 'Link Apple Health' : 'Link Health Connect'}
                 </Text>
-                <Text style={styles.unlinkedSub}>Sync Archanaa's Noise watch steps &amp; battery for free</Text>
+                <Text style={styles.unlinkedSub}>Sync {user?.name || 'Archanaa'}'s Noise watch steps &amp; battery for free</Text>
               </View>
             </View>
             <View style={styles.linkPill}>
@@ -248,7 +291,7 @@ export default function Dashboard({ setTab }) {
             </View>
             <View style={{ marginLeft: 8 }}>
               <Text style={styles.deviceBannerTitle}>
-                {scoreData?.watch_name || 'Pulse Go Buzz'} (Archanaa's Watch)
+                {scoreData?.watch_name || 'Pulse Go Buzz'} ({user?.name || 'Archanaa'}'s Watch)
               </Text>
               <Text style={styles.deviceBannerSub}>
                 Synced via {Platform.OS === 'ios' ? 'Apple Health' : 'Google Health Connect'} · Battery: {scoreData?.battery || '26%'} 🟢
@@ -279,84 +322,86 @@ export default function Dashboard({ setTab }) {
                 </TouchableOpacity>
               </View>
 
-              <View style={styles.iosBody}>
-                <View style={styles.iosAppHeader}>
-                  <MaterialCommunityIcons name="heart-pulse" size={40} color={theme.colors.accentCyan} />
-                  <Text style={styles.iosAppTitle}>BioStability</Text>
-                  <Text style={styles.iosAppDesc}>
-                    would like to access and update your health data in the categories below.
+              <ScrollView showsVerticalScrollIndicator={false} style={{ flex: 1 }}>
+                <View style={styles.iosBody}>
+                  <View style={styles.iosAppHeader}>
+                    <MaterialCommunityIcons name="heart-pulse" size={40} color={theme.colors.accentCyan} />
+                    <Text style={styles.iosAppTitle}>BioStability</Text>
+                    <Text style={styles.iosAppDesc}>
+                      would like to access and update your health data in the categories below.
+                    </Text>
+                  </View>
+
+                  <View style={styles.iosCategoryBox}>
+                    <View style={styles.iosCatHeader}>
+                      <Text style={styles.iosCatHeaderTitle}>ALLOW "BIOSTABILITY" TO READ:</Text>
+                      <TouchableOpacity onPress={handleTurnAllOn}>
+                        <Text style={styles.iosTurnAllText}>Turn All Categories On</Text>
+                      </TouchableOpacity>
+                    </View>
+
+                    {/* HRV */}
+                    <View style={styles.iosRow}>
+                      <View style={styles.iosRowLeft}>
+                        <MaterialCommunityIcons name="heart-flash" size={20} color="#FF3B30" />
+                        <Text style={styles.iosRowLabel}>Heart Rate Variability</Text>
+                      </View>
+                      <Switch
+                        value={permSwitches.hrv}
+                        onValueChange={() => toggleSwitch('hrv')}
+                        trackColor={{ false: '#3a3a3c', true: '#30D158' }}
+                        thumbColor="#FFF"
+                      />
+                    </View>
+
+                    {/* Resting Heart Rate */}
+                    <View style={styles.iosRow}>
+                      <View style={styles.iosRowLeft}>
+                        <MaterialCommunityIcons name="heart-pulse" size={20} color="#FF2D55" />
+                        <Text style={styles.iosRowLabel}>Resting Heart Rate</Text>
+                      </View>
+                      <Switch
+                        value={permSwitches.rhr}
+                        onValueChange={() => toggleSwitch('rhr')}
+                        trackColor={{ false: '#3a3a3c', true: '#30D158' }}
+                        thumbColor="#FFF"
+                      />
+                    </View>
+
+                    {/* Sleep Analysis */}
+                    <View style={styles.iosRow}>
+                      <View style={styles.iosRowLeft}>
+                        <MaterialCommunityIcons name="sleep" size={20} color="#5856D6" />
+                        <Text style={styles.iosRowLabel}>Sleep Analysis</Text>
+                      </View>
+                      <Switch
+                        value={permSwitches.sleep}
+                        onValueChange={() => toggleSwitch('sleep')}
+                        trackColor={{ false: '#3a3a3c', true: '#30D158' }}
+                        thumbColor="#FFF"
+                      />
+                    </View>
+
+                    {/* Steps */}
+                    <View style={[styles.iosRow, { borderBottomWidth: 0 }]}>
+                      <View style={styles.iosRowLeft}>
+                        <MaterialCommunityIcons name="run" size={20} color="#FF9500" />
+                        <Text style={styles.iosRowLabel}>Steps</Text>
+                      </View>
+                      <Switch
+                        value={permSwitches.steps}
+                        onValueChange={() => toggleSwitch('steps')}
+                        trackColor={{ false: '#3a3a3c', true: '#30D158' }}
+                        thumbColor="#FFF"
+                      />
+                    </View>
+                  </View>
+
+                  <Text style={styles.iosDisclaimer}>
+                    BioStability accesses this data securely on your device. Your biometrics are protected under iOS native health policies and encrypted during local sync transfer.
                   </Text>
                 </View>
-
-                <View style={styles.iosCategoryBox}>
-                  <View style={styles.iosCatHeader}>
-                    <Text style={styles.iosCatHeaderTitle}>ALLOW "BIOSTABILITY" TO READ:</Text>
-                    <TouchableOpacity onPress={handleTurnAllOn}>
-                      <Text style={styles.iosTurnAllText}>Turn All Categories On</Text>
-                    </TouchableOpacity>
-                  </View>
-
-                  {/* HRV */}
-                  <View style={styles.iosRow}>
-                    <View style={styles.iosRowLeft}>
-                      <MaterialCommunityIcons name="heart-flash" size={20} color="#FF3B30" />
-                      <Text style={styles.iosRowLabel}>Heart Rate Variability</Text>
-                    </View>
-                    <Switch
-                      value={permSwitches.hrv}
-                      onValueChange={() => toggleSwitch('hrv')}
-                      trackColor={{ false: '#3a3a3c', true: '#30D158' }}
-                      thumbColor="#FFF"
-                    />
-                  </View>
-
-                  {/* Resting Heart Rate */}
-                  <View style={styles.iosRow}>
-                    <View style={styles.iosRowLeft}>
-                      <MaterialCommunityIcons name="heart-pulse" size={20} color="#FF2D55" />
-                      <Text style={styles.iosRowLabel}>Resting Heart Rate</Text>
-                    </View>
-                    <Switch
-                      value={permSwitches.rhr}
-                      onValueChange={() => toggleSwitch('rhr')}
-                      trackColor={{ false: '#3a3a3c', true: '#30D158' }}
-                      thumbColor="#FFF"
-                    />
-                  </View>
-
-                  {/* Sleep Analysis */}
-                  <View style={styles.iosRow}>
-                    <View style={styles.iosRowLeft}>
-                      <MaterialCommunityIcons name="sleep" size={20} color="#5856D6" />
-                      <Text style={styles.iosRowLabel}>Sleep Analysis</Text>
-                    </View>
-                    <Switch
-                      value={permSwitches.sleep}
-                      onValueChange={() => toggleSwitch('sleep')}
-                      trackColor={{ false: '#3a3a3c', true: '#30D158' }}
-                      thumbColor="#FFF"
-                    />
-                  </View>
-
-                  {/* Steps */}
-                  <View style={[styles.iosRow, { borderBottomWidth: 0 }]}>
-                    <View style={styles.iosRowLeft}>
-                      <MaterialCommunityIcons name="run" size={20} color="#FF9500" />
-                      <Text style={styles.iosRowLabel}>Steps</Text>
-                    </View>
-                    <Switch
-                      value={permSwitches.steps}
-                      onValueChange={() => toggleSwitch('steps')}
-                      trackColor={{ false: '#3a3a3c', true: '#30D158' }}
-                      thumbColor="#FFF"
-                    />
-                  </View>
-                </View>
-
-                <Text style={styles.iosDisclaimer}>
-                  BioStability accesses this data securely on your device. Your biometrics are protected under iOS native health policies and encrypted during local sync transfer.
-                </Text>
-              </View>
+              </ScrollView>
             </View>
           </View>
         </Modal>
@@ -443,6 +488,88 @@ export default function Dashboard({ setTab }) {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: theme.colors.bgPrimary },
   contentContainer: { paddingHorizontal: 16, paddingTop: 12, paddingBottom: 24 },
+
+  dashboardProfileCard: {
+    borderRadius: 16,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.05)',
+    marginBottom: 16,
+    ...theme.shadows.card,
+  },
+  profileCardGrad: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 14,
+    gap: 12,
+  },
+  profileAvatarBg: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: 'rgba(6, 182, 212, 0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(6, 182, 212, 0.15)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    position: 'relative',
+  },
+  profileAvatarDot: {
+    position: 'absolute',
+    bottom: -1,
+    right: -1,
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    borderWidth: 2,
+    borderColor: theme.colors.bgPrimary,
+  },
+  profileTextWrapper: {
+    flex: 1,
+  },
+  profileNameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  dashboardProfileName: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: theme.colors.textPrimary,
+  },
+  profileStatusBadge: {
+    borderWidth: 1,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+    backgroundColor: 'rgba(0,0,0,0.15)',
+  },
+  profileStatusText: {
+    fontSize: 8,
+    fontWeight: '800',
+    textTransform: 'uppercase',
+  },
+  dashboardProfileEmail: {
+    fontSize: 11,
+    color: theme.colors.textSecondary,
+    marginTop: 1,
+  },
+  dashboardBadgeRow: {
+    flexDirection: 'row',
+    gap: 6,
+    marginTop: 6,
+  },
+  dashboardProfileBadge: {
+    backgroundColor: 'rgba(255,255,255,0.04)',
+    borderRadius: 4,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+  },
+  dashboardProfileBadgeText: {
+    fontSize: 9,
+    fontWeight: '700',
+    color: theme.colors.textSecondary,
+  },
 
   header: {
     flexDirection: 'row', justifyContent: 'space-between',

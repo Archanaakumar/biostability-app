@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, TextInput,
-  Modal, ActivityIndicator, SectionList, Animated, Image, Switch, Platform
+  Modal, ActivityIndicator, SectionList, Animated, Image, Switch, Platform, ScrollView, Linking
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -104,6 +104,76 @@ export default function DeviceHub() {
 
   const fadeAnim = useRef(new Animated.Value(0)).current;
 
+  // ── Open external smartwatch/wearable application ───────────────────────────
+  const openWearableApp = async (brandName) => {
+    if (!brandName) return;
+    const name = brandName.toLowerCase();
+    
+    let scheme = '';
+    let storeUrl = '';
+    let webUrl = '';
+    
+    if (name.includes('noise')) {
+      scheme = 'noisefit://';
+      storeUrl = Platform.OS === 'ios' ? 'https://apps.apple.com/app/noisefit/id1481710954' : 'market://details?id=com.noisefit.activity';
+      webUrl = Platform.OS === 'ios' ? 'https://apps.apple.com/app/noisefit/id1481710954' : 'https://play.google.com/store/apps/details?id=com.noisefit.activity';
+    } else if (name.includes('garmin')) {
+      scheme = 'gconnect://';
+      storeUrl = Platform.OS === 'ios' ? 'https://apps.apple.com/app/garmin-connect/id585863432' : 'market://details?id=com.garmin.android.apps.connectmobile';
+      webUrl = Platform.OS === 'ios' ? 'https://apps.apple.com/app/garmin-connect/id585863432' : 'https://play.google.com/store/apps/details?id=com.garmin.android.apps.connectmobile';
+    } else if (name.includes('fitbit')) {
+      scheme = 'fitbit://';
+      storeUrl = Platform.OS === 'ios' ? 'https://apps.apple.com/app/fitbit-health-fitness/id462638897' : 'market://details?id=com.fitbit.FitbitMobile';
+      webUrl = Platform.OS === 'ios' ? 'https://apps.apple.com/app/fitbit-health-fitness/id462638897' : 'https://play.google.com/store/apps/details?id=com.fitbit.FitbitMobile';
+    } else if (name.includes('apple')) {
+      scheme = 'x-apple-health://';
+      storeUrl = 'x-apple-health://';
+      webUrl = 'x-apple-health://';
+    } else if (name.includes('samsung')) {
+      scheme = Platform.OS === 'ios' ? 'galaxywearable://' : 'galaxywear://';
+      storeUrl = Platform.OS === 'ios' ? 'https://apps.apple.com/app/samsung-galaxy-watch/id1117352504' : 'market://details?id=com.samsung.android.geargmanager';
+      webUrl = Platform.OS === 'ios' ? 'https://apps.apple.com/app/samsung-galaxy-watch/id1117352504' : 'https://play.google.com/store/apps/details?id=com.samsung.android.geargmanager';
+    } else {
+      scheme = Platform.OS === 'ios' ? 'x-apple-health://' : 'https://play.google.com/store';
+      storeUrl = Platform.OS === 'ios' ? 'x-apple-health://' : 'market://search?q=smartwatch';
+      webUrl = Platform.OS === 'ios' ? 'x-apple-health://' : 'https://play.google.com/store/search?q=smartwatch&c=apps';
+    }
+    
+    try {
+      const canOpen = await Linking.canOpenURL(scheme);
+      if (canOpen) {
+        await Linking.openURL(scheme);
+      } else {
+        await Linking.openURL(storeUrl);
+      }
+    } catch (_) {
+      try {
+        await Linking.openURL(webUrl);
+      } catch (__) {}
+    }
+  };
+
+  // ── Open native OS Health Database settings panel ──────────────────────────
+  const openSystemHealthDB = async () => {
+    if (Platform.OS === 'ios') {
+      try {
+        await Linking.openURL('x-apple-health://');
+      } catch (_) {}
+    } else {
+      const playStoreLink = 'market://details?id=com.google.android.apps.healthdata';
+      const webFallback = 'https://play.google.com/store/apps/details?id=com.google.android.apps.healthdata';
+      try {
+        await Linking.openURL('healthconnect://');
+      } catch (_) {
+        try {
+          await Linking.openURL(playStoreLink);
+        } catch (__) {
+          await Linking.openURL(webFallback);
+        }
+      }
+    }
+  };
+
   useEffect(() => {
     Animated.timing(fadeAnim, { toValue: 1, duration: 500, useNativeDriver: true }).start();
   }, []);
@@ -112,7 +182,7 @@ export default function DeviceHub() {
     const fetchLinkState = () => {
       AsyncStorage.getItem('@biostability:user_watch_data').then(raw => {
         if (raw) {
-          setConnectedDevice("Noise ColorFit Pro (Archanaa's Watch)");
+          setConnectedDevice(`Noise ColorFit Pro (${user?.name || 'Archanaa'}'s Watch)`);
         } else {
           setConnectedDevice("No Watch Paired");
         }
@@ -179,7 +249,7 @@ export default function DeviceHub() {
         await healthBridge.grantPermission(userId);
         setSyncSuccess(true);
         setIsSyncing(false);
-        setConnectedDevice("Noise ColorFit Pro (Archanaa's Watch)");
+        setConnectedDevice(`Noise ColorFit Pro (${user?.name || 'Archanaa'}'s Watch)`);
         
         setTimeout(() => {
           setSyncSuccess(false);
@@ -326,60 +396,101 @@ export default function DeviceHub() {
               </TouchableOpacity>
             </View>
 
-            {/* Modal Content */}
-            <View style={styles.brandDetailView}>
-              {/* Brand icon */}
-              <View style={[styles.brandIconLarge, { borderColor: `${modalBrand?.color}40` }]}>
-                {modalBrand?.name === 'Noise' ? (
-                  <Image source={{ uri: USER_WATCH_URI }} style={styles.brandIconLargeImage} />
-                ) : (
-                  <MaterialCommunityIcons
-                    name={modalBrand?.icon || 'watch'}
-                    size={40}
-                    color={modalBrand?.color || theme.colors.accentCyan}
-                  />
-                )}
-              </View>
-              <Text style={styles.brandDetailName}>{modalBrand?.name}</Text>
-              <Text style={styles.brandDetailModels}>{modalBrand?.models}</Text>
+            {/* Modal Content - Scrollable to fit all device heights */}
+            <ScrollView showsVerticalScrollIndicator={false} style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 16 }}>
+              <View style={styles.brandDetailView}>
+                {/* Brand icon */}
+                <View style={[styles.brandIconLarge, { borderColor: `${modalBrand?.color}40` }]}>
+                  {modalBrand?.name === 'Noise' ? (
+                    <Image source={{ uri: USER_WATCH_URI }} style={styles.brandIconLargeImage} />
+                  ) : (
+                    <MaterialCommunityIcons
+                      name={modalBrand?.icon || 'watch'}
+                      size={40}
+                      color={modalBrand?.color || theme.colors.accentCyan}
+                    />
+                  )}
+                </View>
+                <Text style={styles.brandDetailName}>{modalBrand?.name}</Text>
+                <Text style={styles.brandDetailModels}>{modalBrand?.models}</Text>
 
-              {/* Native sync instructions list */}
-              <Text style={styles.instructionsHeadline}>How to connect {modalBrand?.name}:</Text>
-              <View style={styles.instructionStepCard}>
-                <Text style={styles.stepText}>
-                  1. Sync your {modalBrand?.name} watch to the standard companion app on your phone.
-                </Text>
-                <Text style={styles.stepText}>
-                  2. In your companion app settings, enable **"Sync with {Platform.OS === 'ios' ? 'Apple Health' : 'Google Fit'}"**.
-                </Text>
-                <Text style={styles.stepText}>
-                  3. Tap the **Link watch database** button below to complete the free offline connection.
-                </Text>
-              </View>
+                {/* Premium 3-Second Onboarding Guide Timeline */}
+                <Text style={styles.instructionsHeadline}>⚡ 3-Second Instant Connection Guide</Text>
+                <View style={styles.visualTimeline}>
+                  {/* Step 1 - Interactive Deep Link */}
+                  <TouchableOpacity 
+                    style={styles.timelineItem} 
+                    onPress={() => openWearableApp(modalBrand?.name)}
+                    activeOpacity={0.75}
+                  >
+                    <View style={styles.timelineLeft}>
+                      <View style={[styles.timelineIconWrapper, { backgroundColor: 'rgba(6, 182, 212, 0.08)' }]}>
+                        <MaterialCommunityIcons name="bluetooth" size={14} color={theme.colors.accentCyan} />
+                      </View>
+                      <View style={styles.timelineLine} />
+                    </View>
+                    <View style={styles.timelineRight}>
+                      <Text style={styles.timelineStepTitle}>Step 1: Sync to Wearable App</Text>
+                      <Text style={styles.timelineStepDesc}>Your physical watch automatically syncs steps via Bluetooth to the standard <Text style={{ color: theme.colors.accentCyan, fontWeight: '700' }}>{modalBrand?.name} Fit</Text> app. <Text style={{ color: theme.colors.accentCyan, fontWeight: '600', textDecorationLine: 'underline' }}>Tap to open app →</Text></Text>
+                    </View>
+                  </TouchableOpacity>
 
-              {/* What will be synced */}
-              <View style={styles.syncDataList}>
-                {['Daily Steps (Synced)', 'Heart Rate Parameters', 'Sleep Analysis', 'Battery Level (26%)'].map((d) => (
-                  <View key={d} style={styles.syncDataRow}>
-                    <MaterialCommunityIcons name="check" size={13} color={theme.colors.accentCyan} />
-                    <Text style={styles.syncDataLabel}>{d}</Text>
+                  {/* Step 2 - Interactive System Health Deep Link */}
+                  <TouchableOpacity 
+                    style={styles.timelineItem} 
+                    onPress={openSystemHealthDB}
+                    activeOpacity={0.75}
+                  >
+                    <View style={styles.timelineLeft}>
+                      <View style={[styles.timelineIconWrapper, { backgroundColor: 'rgba(245, 158, 11, 0.08)' }]}>
+                        <MaterialCommunityIcons name="sync" size={14} color={theme.colors.warning} />
+                      </View>
+                      <View style={styles.timelineLine} />
+                    </View>
+                    <View style={styles.timelineRight}>
+                      <Text style={styles.timelineStepTitle}>Step 2: Share with Phone Health</Text>
+                      <Text style={styles.timelineStepDesc}>In settings of your wearable app, turn on <Text style={{ color: theme.colors.warning, fontWeight: '700' }}>Sync with {Platform.OS === 'ios' ? 'Apple Health' : 'Health Connect'}</Text>. <Text style={{ color: theme.colors.warning, fontWeight: '600', textDecorationLine: 'underline' }}>Tap to configure →</Text></Text>
+                    </View>
+                  </TouchableOpacity>
+
+                  {/* Step 3 */}
+                  <View style={styles.timelineItem}>
+                    <View style={styles.timelineLeft}>
+                      <View style={[styles.timelineIconWrapper, { backgroundColor: 'rgba(16, 185, 129, 0.08)' }]}>
+                        <MaterialCommunityIcons name="shield-check" size={14} color={theme.colors.success} />
+                      </View>
+                    </View>
+                    <View style={styles.timelineRight}>
+                      <Text style={styles.timelineStepTitle}>Step 3: One-Tap Secure Link</Text>
+                      <Text style={styles.timelineStepDesc}>Tap the button below. BioStability automatically registers a private background sync worker that imports your biometrics securely.</Text>
+                    </View>
                   </View>
-                ))}
-              </View>
+                </View>
 
-              {/* Connect button */}
-              <TouchableOpacity onPress={handlePair} activeOpacity={0.85} style={styles.connectBtnWrap}>
-                <LinearGradient
-                  colors={['#30D158', '#0A84FF']}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 0 }}
-                  style={styles.connectBtn}
-                >
-                  <MaterialCommunityIcons name="heart-flash" size={16} color="#FFF" style={{ marginRight: 6 }} />
-                  <Text style={styles.connectBtnText}>Link Watch Database</Text>
-                </LinearGradient>
-              </TouchableOpacity>
-            </View>
+                {/* What will be synced */}
+                <View style={styles.syncDataList}>
+                  {['Daily Steps (Synced)', 'Heart Rate Parameters', 'Sleep Analysis', 'Battery Level (26%)'].map((d) => (
+                    <View key={d} style={styles.syncDataRow}>
+                      <MaterialCommunityIcons name="check" size={13} color={theme.colors.accentCyan} />
+                      <Text style={styles.syncDataLabel}>{d}</Text>
+                    </View>
+                  ))}
+                </View>
+
+                {/* Connect button */}
+                <TouchableOpacity onPress={handlePair} activeOpacity={0.85} style={styles.connectBtnWrap}>
+                  <LinearGradient
+                    colors={['#30D158', '#0A84FF']}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 0 }}
+                    style={styles.connectBtn}
+                  >
+                    <MaterialCommunityIcons name="heart-flash" size={16} color="#FFF" style={{ marginRight: 6 }} />
+                    <Text style={styles.connectBtnText}>Link Watch Database</Text>
+                  </LinearGradient>
+                </TouchableOpacity>
+              </View>
+            </ScrollView>
 
             {/* Footer */}
             <View style={styles.widgetFooter}>
@@ -410,84 +521,86 @@ export default function DeviceHub() {
                 </TouchableOpacity>
               </View>
 
-              <View style={styles.iosBody}>
-                <View style={styles.iosAppHeader}>
-                  <MaterialCommunityIcons name="heart-pulse" size={40} color={theme.colors.accentCyan} />
-                  <Text style={styles.iosAppTitle}>BioStability</Text>
-                  <Text style={styles.iosAppDesc}>
-                    would like to access and update your health data in the categories below.
+              <ScrollView showsVerticalScrollIndicator={false} style={{ flex: 1 }}>
+                <View style={styles.iosBody}>
+                  <View style={styles.iosAppHeader}>
+                    <MaterialCommunityIcons name="heart-pulse" size={40} color={theme.colors.accentCyan} />
+                    <Text style={styles.iosAppTitle}>BioStability</Text>
+                    <Text style={styles.iosAppDesc}>
+                      would like to access and update your health data in the categories below.
+                    </Text>
+                  </View>
+
+                  <View style={styles.iosCategoryBox}>
+                    <View style={styles.iosCatHeader}>
+                      <Text style={styles.iosCatHeaderTitle}>ALLOW "BIOSTABILITY" TO READ:</Text>
+                      <TouchableOpacity onPress={handleTurnAllOn}>
+                        <Text style={styles.iosTurnAllText}>Turn All Categories On</Text>
+                      </TouchableOpacity>
+                    </View>
+
+                    {/* HRV */}
+                    <View style={styles.iosRow}>
+                      <View style={styles.iosRowLeft}>
+                        <MaterialCommunityIcons name="heart-flash" size={20} color="#FF3B30" />
+                        <Text style={styles.iosRowLabel}>Heart Rate Variability</Text>
+                      </View>
+                      <Switch
+                        value={permSwitches.hrv}
+                        onValueChange={() => toggleSwitch('hrv')}
+                        trackColor={{ false: '#3a3a3c', true: '#30D158' }}
+                        thumbColor="#FFF"
+                      />
+                    </View>
+
+                    {/* Resting Heart Rate */}
+                    <View style={styles.iosRow}>
+                      <View style={styles.iosRowLeft}>
+                        <MaterialCommunityIcons name="heart-pulse" size={20} color="#FF2D55" />
+                        <Text style={styles.iosRowLabel}>Resting Heart Rate</Text>
+                      </View>
+                      <Switch
+                        value={permSwitches.rhr}
+                        onValueChange={() => toggleSwitch('rhr')}
+                        trackColor={{ false: '#3a3a3c', true: '#30D158' }}
+                        thumbColor="#FFF"
+                      />
+                    </View>
+
+                    {/* Sleep Analysis */}
+                    <View style={styles.iosRow}>
+                      <View style={styles.iosRowLeft}>
+                        <MaterialCommunityIcons name="sleep" size={20} color="#5856D6" />
+                        <Text style={styles.iosRowLabel}>Sleep Analysis</Text>
+                      </View>
+                      <Switch
+                        value={permSwitches.sleep}
+                        onValueChange={() => toggleSwitch('sleep')}
+                        trackColor={{ false: '#3a3a3c', true: '#30D158' }}
+                        thumbColor="#FFF"
+                      />
+                    </View>
+
+                    {/* Steps */}
+                    <View style={[styles.iosRow, { borderBottomWidth: 0 }]}>
+                      <View style={styles.iosRowLeft}>
+                        <MaterialCommunityIcons name="run" size={20} color="#FF9500" />
+                        <Text style={styles.iosRowLabel}>Steps</Text>
+                      </View>
+                      <Switch
+                        value={permSwitches.steps}
+                        onValueChange={() => toggleSwitch('steps')}
+                        trackColor={{ false: '#3a3a3c', true: '#30D158' }}
+                        thumbColor="#FFF"
+                      />
+                    </View>
+                  </View>
+
+                  <Text style={styles.iosDisclaimer}>
+                    BioStability accesses this data securely on your device. Your biometrics are protected under iOS native health policies and encrypted during local sync transfer.
                   </Text>
                 </View>
-
-                <View style={styles.iosCategoryBox}>
-                  <View style={styles.iosCatHeader}>
-                    <Text style={styles.iosCatHeaderTitle}>ALLOW "BIOSTABILITY" TO READ:</Text>
-                    <TouchableOpacity onPress={handleTurnAllOn}>
-                      <Text style={styles.iosTurnAllText}>Turn All Categories On</Text>
-                    </TouchableOpacity>
-                  </View>
-
-                  {/* HRV */}
-                  <View style={styles.iosRow}>
-                    <View style={styles.iosRowLeft}>
-                      <MaterialCommunityIcons name="heart-flash" size={20} color="#FF3B30" />
-                      <Text style={styles.iosRowLabel}>Heart Rate Variability</Text>
-                    </View>
-                    <Switch
-                      value={permSwitches.hrv}
-                      onValueChange={() => toggleSwitch('hrv')}
-                      trackColor={{ false: '#3a3a3c', true: '#30D158' }}
-                      thumbColor="#FFF"
-                    />
-                  </View>
-
-                  {/* Resting Heart Rate */}
-                  <View style={styles.iosRow}>
-                    <View style={styles.iosRowLeft}>
-                      <MaterialCommunityIcons name="heart-pulse" size={20} color="#FF2D55" />
-                      <Text style={styles.iosRowLabel}>Resting Heart Rate</Text>
-                    </View>
-                    <Switch
-                      value={permSwitches.rhr}
-                      onValueChange={() => toggleSwitch('rhr')}
-                      trackColor={{ false: '#3a3a3c', true: '#30D158' }}
-                      thumbColor="#FFF"
-                    />
-                  </View>
-
-                  {/* Sleep Analysis */}
-                  <View style={styles.iosRow}>
-                    <View style={styles.iosRowLeft}>
-                      <MaterialCommunityIcons name="sleep" size={20} color="#5856D6" />
-                      <Text style={styles.iosRowLabel}>Sleep Analysis</Text>
-                    </View>
-                    <Switch
-                      value={permSwitches.sleep}
-                      onValueChange={() => toggleSwitch('sleep')}
-                      trackColor={{ false: '#3a3a3c', true: '#30D158' }}
-                      thumbColor="#FFF"
-                    />
-                  </View>
-
-                  {/* Steps */}
-                  <View style={[styles.iosRow, { borderBottomWidth: 0 }]}>
-                    <View style={styles.iosRowLeft}>
-                      <MaterialCommunityIcons name="run" size={20} color="#FF9500" />
-                      <Text style={styles.iosRowLabel}>Steps</Text>
-                    </View>
-                    <Switch
-                      value={permSwitches.steps}
-                      onValueChange={() => toggleSwitch('steps')}
-                      trackColor={{ false: '#3a3a3c', true: '#30D158' }}
-                      thumbColor="#FFF"
-                    />
-                  </View>
-                </View>
-
-                <Text style={styles.iosDisclaimer}>
-                  BioStability accesses this data securely on your device. Your biometrics are protected under iOS native health policies and encrypted during local sync transfer.
-                </Text>
-              </View>
+              </ScrollView>
             </View>
           </View>
         </Modal>
@@ -788,6 +901,57 @@ const styles = StyleSheet.create({
   },
   stepText: {
     fontSize: 11.5, color: theme.colors.textSecondary, lineHeight: 16,
+  },
+
+  // Premium Onboarding Timeline
+  visualTimeline: {
+    width: '100%',
+    backgroundColor: 'rgba(255, 255, 255, 0.01)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.03)',
+    borderRadius: 14,
+    padding: 14,
+    gap: 12,
+    marginBottom: 16,
+  },
+  timelineItem: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  timelineLeft: {
+    alignItems: 'center',
+    width: 24,
+  },
+  timelineIconWrapper: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.06)',
+  },
+  timelineLine: {
+    width: 1,
+    flex: 1,
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    marginTop: 4,
+    minHeight: 18,
+  },
+  timelineRight: {
+    flex: 1,
+    paddingTop: 1,
+  },
+  timelineStepTitle: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#FFF',
+    marginBottom: 2,
+  },
+  timelineStepDesc: {
+    fontSize: 11,
+    color: theme.colors.textSecondary,
+    lineHeight: 15,
   },
 
   syncDataList: {

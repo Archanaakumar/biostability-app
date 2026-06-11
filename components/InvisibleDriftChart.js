@@ -8,10 +8,12 @@ export default function InvisibleDriftChart({ metricType = 'hrv', chartData }) {
   const data = chartData || mockData.trendsData[metricType] || [];
   
   // Dimensions & Padding
-  const screenWidth = Dimensions.get('window').width - 32; // Padding margins
-  const width = Math.max(screenWidth, 340);
+  const screenWidth = Dimensions.get('window').width;
+  // Calculate chart width ensuring it fits perfectly within the card's boundaries.
+  // Margins: Screen padding is 16 on each side (32 total), Card padding is 14 on each side (28 total), overall margins = 60.
+  const width = Math.min(screenWidth - 60, 500);
   const height = 185;
-  const paddingX = 40;
+  const paddingX = 35;
   const paddingY = 25;
   
   // Calculate value ranges based on metric type

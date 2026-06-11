@@ -1,202 +1,135 @@
 /**
- * Local Health Database Bridge Service
+ * Health Bridge Service — Expo Go Compatible Version
  *
- * Links BioStability directly to the phone's native health store:
- * - Apple HealthKit on iOS
- * - Google Fit / Health Connect on Android
+ * Simulates realistic smartwatch data that changes based on real time of day.
+ * No native modules used — works 100% in Expo Go.
  *
- * In Production: Connects directly to native mobile SDKs to automatically
- * retrieve live step count and heart rate records without manual user input.
- *
- * In Expo Go: Gracefully falls back to simulating a direct sync of your watch
- * parameters to prevent sandboxed environment crashes.
+ * In a production APK build, replace the simulation functions below
+ * with real react-native-health (iOS) or react-native-health-connect (Android) calls.
  */
-import { Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { apiService } from './apiService';
+import { supabase } from './supabaseConfig';
 
-// Safely attempt to import native health modules to avoid crashing in Expo Go
-let AppleHealthKit = null;
-let GoogleFit = null;
-let HealthConnect = null;
 
-try {
-  AppleHealthKit = require('react-native-health').default;
-} catch (e) { /* silent fallback in sandbox */ }
+// ── Realistic data generators ────────────────────────────────────────────────
 
-try {
-  GoogleFit = require('react-native-google-fit').default;
-} catch (e) { /* silent fallback in sandbox */ }
+function getRealisticSteps() {
+  const hour = new Date().getHours();
+  const minute = new Date().getMinutes();
+  const hourlyBase = [
+    0, 0, 0, 0, 0, 0,
+    200, 600, 1100, 1800,
+    2400, 3100, 3700, 4300,
+    4850, 5400, 5900, 6400,
+    7000, 7500, 8100, 8600,
+    9000, 9300,
+  ];
+  const base = hourlyBase[Math.min(hour, 23)] || 4850;
+  const minuteBoost = Math.round((minute / 60) * 500);
+  const jitter = Math.round((Math.random() - 0.5) * 120);
+  return Math.max(0, base + minuteBoost + jitter);
+}
 
-try {
-  HealthConnect = require('react-native-health-connect');
-} catch (e) { /* silent fallback in sandbox */ }
+function getRealisticBattery() {
+  const hour = new Date().getHours();
+  const base = Math.round(85 - (Math.max(0, hour - 6) / 17) * 65);
+  return `${Math.max(10, Math.min(95, base))}%`;
+}
+
+function getRealisticHRV() {
+  return Math.round(72 + (Math.random() - 0.5) * 14);
+}
+
+function getRealisticRHR() {
+  return Math.round(61 + (Math.random() - 0.5) * 6);
+}
+
+// ── Service class ─────────────────────────────────────────────────────────────
 
 class HealthBridgeService {
   constructor() {
-    this.permissionsRequestedKey = '@biostability:health_bridge_auth';
+    this.permissionsKey = '@biostability:health_bridge_auth';
+    this.watchDataKey = '@biostability:user_watch_data';
   }
 
-  /**
-   * Check if the user has already authorized the local health bridge
-   */
   async isAuthorized() {
     try {
-      const auth = await AsyncStorage.getItem(this.permissionsRequestedKey);
-      return auth === 'granted';
+      return (await AsyncStorage.getItem(this.permissionsKey)) === 'granted';
     } catch {
       return false;
     }
   }
 
-  /**
-   * Authorize and link Apple Health / Google Fit natively.
-   * If running in Expo Go sandbox, handles it gracefully with a success result.
-   */
   async grantPermission(userId) {
-    try {
-      await AsyncStorage.setItem(this.permissionsRequestedKey, 'granted');
-      return await this.syncWatchDataDirectly(userId);
-    } catch (e) {
-      console.log("Authorization failed:", e);
-      return false;
-    }
+    await AsyncStorage.setItem(this.permissionsKey, 'granted');
+    return await this.syncWatchDataDirectly(userId);
   }
 
-  /**
-   * DIRECT SYNC FROM WATCH: Queries the real phone Health Store database (Apple/Google)
-   * to automatically extract steps, battery, and metrics.
-   * 100% Automatic. Zero Manual Entry.
-   */
-  async syncWatchDataDirectly(userId, watchName = "Pulse Go Buzz") {
-    let finalSteps = 4850; // Highly realistic default steps matching your watch
-    let finalBattery = "26%"; // 26% matching your screenshot
-    let isNativeSource = false;
+  async syncWatchDataDirectly(userId, watchName = 'Noise ColorFit Pro') {
+    const steps    = getRealisticSteps();
+    const battery  = getRealisticBattery();
+    const hrv      = getRealisticHRV();
+    const rhr      = getRealisticRHR();
+    const sleep    = parseFloat((7.2 + (Math.random() - 0.5) * 1.2).toFixed(1));
+    const score    = parseFloat((Math.min(99, 75 + (steps / 9500) * 20 + (Math.random() - 0.5) * 4)).toFixed(1));
 
-    // ── iOS Native Apple HealthKit Integration ─────────────────────────────────────
-    if (Platform.OS === 'ios' && AppleHealthKit) {
-      try {
-        const permissions = {
-          permissions: {
-            read: ['Steps', 'HeartRate', 'SleepAnalysis']
-          }
-        };
-        
-        await new Promise((resolve, reject) => {
-          AppleHealthKit.initHealthKit(permissions, (err) => {
-            if (err) reject(err);
-            else resolve();
-          });
-        });
-
-        // Fetch actual daily steps count from Apple HealthKit database!
-        const todayStart = new Date();
-        todayStart.setHours(0, 0, 0, 0);
-        
-        const stepsResult = await new Promise((resolve) => {
-          AppleHealthKit.getStepCount({ date: todayStart.toISOString() }, (err, results) => {
-            if (err || !results) resolve(null);
-            else resolve(results.value);
-          });
-        });
-
-        if (stepsResult !== null) {
-          finalSteps = Math.round(stepsResult);
-          isNativeSource = true;
-        }
-      } catch (err) {
-        console.log("iOS Apple HealthKit read error, falling back safely:", err);
-      }
-    }
-
-    // ── Android Native Google Fit Integration ────────────────────────────────────
-    if (Platform.OS === 'android' && GoogleFit) {
-      try {
-        // Authorize with Google Fit API
-        const authorized = await GoogleFit.authorize({
-          scopes: ['fit:activity:read', 'fit:body:read']
-        });
-
-        if (authorized.success) {
-          const opt = {
-            startDate: new Date(new Date().setHours(0, 0, 0, 0)).toISOString(),
-            endDate: new Date().toISOString(),
-            bucketUnit: "DAY",
-            bucketSize: 1,
-          };
-          
-          const stepsData = await GoogleFit.getDailyStepCountSamples(opt);
-          if (stepsData && stepsData.length > 0) {
-            // Find steps from wearable watch device
-            const source = stepsData.find(s => s.source.includes('step') || s.steps && s.steps.length > 0);
-            if (source && source.steps && source.steps.length > 0) {
-              finalSteps = Math.round(source.steps[0].value);
-              isNativeSource = true;
-            }
-          }
-        }
-      } catch (err) {
-        console.log("Android Google Fit read error, falling back safely:", err);
-      }
-    }
-
-    // ── Package Unified Biomarker Packet ─────────────────────────────────────────
     const watchData = {
-      score: 96.0,
-      status: 'Optimal',
+      score,
+      status: steps > 6000 ? 'Optimal' : 'Calibrating',
       baseline: { hrv_ms: 74, rhr_bpm: 61, sleep_hrs: 7.8, steps_count: 9500 },
-      current_raw: {
-        hrv_ms: 78.0,
-        rhr_bpm: 60.0,
-        sleep_hrs: 7.6,
-        steps_count: finalSteps
-      },
+      current_raw: { hrv_ms: hrv, rhr_bpm: rhr, sleep_hrs: sleep, steps_count: steps },
       deviations: {
-        hrv_ms: 5.4,
-        rhr_bpm: -1.6,
-        sleep_hrs: -2.5,
-        steps_count: (finalSteps - 9500) / 95
+        hrv_ms:      parseFloat(((hrv  - 74)   / 74   * 100).toFixed(1)),
+        rhr_bpm:     parseFloat(((rhr  - 61)   / 61   * 100).toFixed(1)),
+        sleep_hrs:   parseFloat(((sleep - 7.8) / 7.8  * 100).toFixed(1)),
+        steps_count: parseFloat(((steps - 9500)/ 9500 * 100).toFixed(1)),
       },
       invisible_drift: false,
       flagged_metrics: [],
-      offline: false,
-      battery: finalBattery,
+      offline: true,
+      battery,
       watch_name: watchName,
-      is_native_hardware_sync: isNativeSource,
+      is_native_hardware_sync: false,
       sync_method: 'local_health_bridge',
-      last_synced_at: new Date().toISOString()
+      last_synced_at: new Date().toISOString(),
     };
 
-    // 1. Sync data dynamically to FastAPI backend server
+    // Try backend sync — silently ignored if offline
     try {
-      await apiService.syncData(
-        userId,
-        {
-          hrv: 78.0,
-          rhr: 60.0,
-          sleep: 7.6,
-          steps: finalSteps,
-          battery: finalBattery
-        },
-        Platform.OS === 'ios' 
-          ? `Apple Health (${watchName})` 
-          : `Health Connect (${watchName})`
-      );
+      await apiService.syncData(userId, { hrv, rhr, sleep, steps, battery }, `Health Bridge (${watchName})`);
+    } catch (_) {}
+
+    await AsyncStorage.setItem(this.watchDataKey, JSON.stringify(watchData));
+
+    // ── Persist to Supabase daily_metrics (cloud record) ──────────────────
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.user) {
+        const { error } = await supabase.from('daily_metrics').insert({
+          user_id:         session.user.id,
+          steps_count:     steps,
+          sleep_hrs:       sleep,
+          hrv_ms:          hrv,
+          rhr_bpm:         rhr,
+          battery:         battery,
+          stability_score: score,
+          status:          watchData.status,
+        });
+        if (error) {
+          console.error('Supabase Daily Metrics Insert Error:', error);
+        }
+      }
     } catch (err) {
-      console.log("Local Database sync FastAPI transfer error:", err);
+      console.error('Supabase Daily Metrics Catch Error:', err);
     }
 
-    // 2. Persist state in AsyncStorage for Dashboard updates
-    await AsyncStorage.setItem('@biostability:user_watch_data', JSON.stringify(watchData));
     return watchData;
   }
 
-  /**
-   * Revoke permission and unpair watch
-   */
   async revokePermission() {
-    await AsyncStorage.removeItem(this.permissionsRequestedKey);
-    await AsyncStorage.removeItem('@biostability:user_watch_data');
+    await AsyncStorage.removeItem(this.permissionsKey);
+    await AsyncStorage.removeItem(this.watchDataKey);
   }
 }
 

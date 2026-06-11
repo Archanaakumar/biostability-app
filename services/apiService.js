@@ -1,12 +1,13 @@
 /**
  * API Service — REST client for the BioStability FastAPI backend.
  * Falls back gracefully to mock data when the backend is unavailable.
+ * When API_BASE_URL is null (Expo Go offline mode), skips network entirely.
  */
 import { API_BASE_URL } from './firebaseConfig';
 import { mockData } from '../data/mockData';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-const TIMEOUT_MS = 5000;
+const TIMEOUT_MS = 3000; // Short timeout — fail fast and use mock data
 
 async function _fetch(url, options = {}) {
   const controller = new AbortController();
@@ -26,9 +27,13 @@ export const apiService = {
   /**
    * POST /sync-data
    * Send normalized wearable data to the backend.
-   * Returns { success: true, offline: true } silently on network failure.
+   * When offline (API_BASE_URL is null), silently succeeds using local storage only.
    */
   async syncData(userId, metrics, sourceDevice = 'Unknown Device') {
+    // Skip network call entirely when no backend is configured
+    if (!API_BASE_URL) {
+      return { success: true, offline: true };
+    }
     try {
       return await _fetch(`${API_BASE_URL}/sync-data`, {
         method: 'POST',
@@ -46,9 +51,13 @@ export const apiService = {
 
   /**
    * GET /stability-score?user_id=xxx
-   * Returns live stability score or falls back to mock data.
+   * Returns live stability score or falls back to local watch data / mock data.
    */
   async getStabilityScore(userId) {
+    // Skip network call entirely when no backend is configured
+    if (!API_BASE_URL) {
+      return await _mockScoreResponse();
+    }
     try {
       return await _fetch(`${API_BASE_URL}/stability-score?user_id=${encodeURIComponent(userId)}`);
     } catch {
@@ -61,6 +70,10 @@ export const apiService = {
    * Returns historical trend data or falls back to mock data.
    */
   async getTrends(userId, days = 14) {
+    // Skip network call entirely when no backend is configured
+    if (!API_BASE_URL) {
+      return await _mockTrendsResponse();
+    }
     try {
       return await _fetch(
         `${API_BASE_URL}/trends?user_id=${encodeURIComponent(userId)}&days=${days}`
