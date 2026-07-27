@@ -51,6 +51,11 @@ export function AuthProvider({ children }) {
 
   // ── Boot: restore session from Supabase ───────────────────────────────────
   useEffect(() => {
+    // Hard failsafe: always dismiss splash within 6 seconds even if Supabase hangs
+    const failsafeTimer = setTimeout(() => {
+      setLoading(false);
+    }, 6000);
+
     const init = async () => {
       try {
         const { data: { session } } = await supabase.auth.getSession();
@@ -58,8 +63,12 @@ export function AuthProvider({ children }) {
           const fullUser = await fetchProfile(session.user);
           setUser(fullUser);
         }
-      } catch (_) {}
-      setLoading(false);
+      } catch (_) {
+        // Supabase unreachable — proceed to login screen
+      } finally {
+        clearTimeout(failsafeTimer);
+        setLoading(false);
+      }
     };
 
     init();
@@ -73,10 +82,15 @@ export function AuthProvider({ children }) {
         } else {
           setUser(null);
         }
+        // Always ensure loading is cleared on any auth event
+        setLoading(false);
       }
     );
 
-    return () => subscription.unsubscribe();
+    return () => {
+      clearTimeout(failsafeTimer);
+      subscription.unsubscribe();
+    };
   }, []);
 
   // ── Sign Up ───────────────────────────────────────────────────────────────

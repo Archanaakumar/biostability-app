@@ -1,4 +1,3 @@
-import 'react-native-url-polyfill/auto';
 import React, { useState } from 'react';
 import {
   View, StyleSheet,
@@ -104,6 +103,8 @@ function AppNavigator() {
 function AuthGate() {
   const { user, loading } = useAuth();
   const [authScreen, setAuthScreen] = useState('login'); // 'login' | 'signup'
+  // Increment to force re-render after ProfileSetupScreen saves
+  const [setupKey, setSetupKey] = useState(0);
 
   // Splash / loading state
   if (loading) {
@@ -125,7 +126,12 @@ function AuthGate() {
 
   // Authenticated but profile setup not completed → show Profile Setup Screen
   if (!user.hasSetupCompleted) {
-    return <ProfileSetupScreen onComplete={() => {}} />;
+    return (
+      <ProfileSetupScreen
+        key={setupKey}
+        onComplete={() => setSetupKey(k => k + 1)}
+      />
+    );
   }
 
   // Authenticated and profile completed → show main app
