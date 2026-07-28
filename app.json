@@ -28,13 +28,7 @@
       }
     },
     "plugins": [
-      "expo-font",
-      [
-        "react-native-health-connect",
-        {
-          "healthConnectVersion": "1.1.0-alpha11"
-        }
-      ]
+      "expo-font"
     ]
   }
 }
