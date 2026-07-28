@@ -28,16 +28,7 @@
       }
     },
     "plugins": [
-      "expo-font",
-      [
-        "expo-build-properties",
-        {
-          "android": {
-            "minSdkVersion": 26
-          }
-        }
-      ],
-      "react-native-health-connect"
+      "expo-font"
     ]
   }
 }
