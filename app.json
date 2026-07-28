@@ -20,16 +20,6 @@
         "android.permission.health.READ_RESTING_HEART_RATE",
         "android.permission.health.READ_SLEEP",
         "android.permission.health.READ_HEART_RATE_VARIABILITY"
-      ],
-      "intentFilters": [
-        {
-          "action": "androidx.health.ACTION_SHOW_PERMISSIONS_RATIONALE"
-        }
-      ],
-      "queries": [
-        {
-          "package": "com.google.android.apps.healthdata"
-        }
       ]
     },
     "extra": {
@@ -39,7 +29,12 @@
     },
     "plugins": [
       "expo-font",
-      "react-native-health-connect"
+      [
+        "react-native-health-connect",
+        {
+          "healthConnectVersion": "1.1.0-alpha11"
+        }
+      ]
     ]
   }
 }
