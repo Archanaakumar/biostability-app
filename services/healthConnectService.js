@@ -16,13 +16,8 @@ import { Platform } from 'react-native';
 import { apiService } from './apiService';
 import { supabase } from './supabaseConfig';
 
-// ── Attempt to import Health Connect (gracefully fails if not installed) ──────
+// ── Attempt to import Health Connect (disabled to prevent native crashes) ──────
 let HC = null;
-try {
-  HC = require('react-native-health-connect');
-} catch (_) {
-  // Package not installed — will use simulation fallback
-}
 
 const WATCH_DATA_KEY = '@biostability:user_watch_data';
 const PERMISSION_KEY = '@biostability:health_bridge_auth';
@@ -65,13 +60,16 @@ function simulateBattery() {
 // ── Core Service ──────────────────────────────────────────────────────────────
 
 class HealthConnectService {
+  constructor() {
+    this.nativeFailed = false;
+  }
 
   /**
    * Check if Health Connect is available on this device.
    * Returns true on Android with HC package installed.
    */
   isAvailable() {
-    return Platform.OS === 'android' && HC !== null;
+    return Platform.OS === 'android' && HC !== null && !this.nativeFailed;
   }
 
   /**
@@ -85,6 +83,7 @@ class HealthConnectService {
       return result;
     } catch (e) {
       console.warn('[HealthConnect] initialize() failed:', e.message);
+      this.nativeFailed = true;
       return false;
     }
   }
@@ -111,6 +110,7 @@ class HealthConnectService {
       return granted;
     } catch (e) {
       console.warn('[HealthConnect] requestPermission() failed:', e.message);
+      this.nativeFailed = true;
       return false;
     }
   }
@@ -317,18 +317,21 @@ class HealthConnectService {
     return watchData;
   }
 
-  /**
-   * Grant permission flow: initialize → request permissions → sync.
-   */
   async grantPermission(userId) {
-    if (this.isAvailable()) {
-      await this.initialize();
-      const granted = await this.requestPermissions();
-      if (!granted) {
-        // Still save the flag so the UI shows connected (will use simulation)
+    try {
+      if (this.isAvailable()) {
+        await this.initialize();
+        const granted = await this.requestPermissions();
+        if (!granted) {
+          // Still save the flag so the UI shows connected (will use simulation)
+          await AsyncStorage.setItem(PERMISSION_KEY, 'granted');
+        }
+      } else {
         await AsyncStorage.setItem(PERMISSION_KEY, 'granted');
       }
-    } else {
+    } catch (e) {
+      console.warn('[HealthConnect] grantPermission crashed defensively:', e.message);
+      this.nativeFailed = true;
       await AsyncStorage.setItem(PERMISSION_KEY, 'granted');
     }
     return await this.syncWatchData(userId);
